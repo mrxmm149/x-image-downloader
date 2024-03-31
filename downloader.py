@@ -1,16 +1,16 @@
 #!/usr/bin/env python
 
 from datetime import datetime
+from dateutil import tz
 from json import JSONDecodeError, loads
-from os.path import isfile, join
+from os.path import isfile, join, splitext
 from pathlib import Path
+from threading import Thread, Lock
+from urllib.parse import urlparse
 from urllib.request import urlretrieve
 
-from dateutil import tz
 from twitter.scraper import Scraper
 from twitter.util import find_key
-
-from threading import Thread, Lock
 
 # config
 ITERATION_SIZE = 32  # download in parallel
@@ -65,11 +65,12 @@ class Downloader:
                 f.write(f"{post_id}\n")
 
     def __download_media(self, post, path: str) -> None:
-        urls = find_key(find_key(post, "variants"), "url")  # video urls
-        if len(urls) == 0:
+        urls = sorted(find_key(find_key(post, "variants"), "url")) # video urls
+        if len(urls) > 0:
+            urls = [urls[-1]]  # grab only best quality
+        else:
             urls = find_key(post["legacy"], "media_url_https")  # photo urls
-            # urls = [url for url in urls if "_video_thumb" not in url]
-        urls = self.__dedup_list(urls)
+            urls = self.__dedup_list(urls)
 
         author_name = find_key(post["core"], "screen_name")[0]
         path = join(path, author_name)
@@ -79,7 +80,7 @@ class Downloader:
         post_id = post.get("rest_id")
 
         for ii, url in enumerate(urls, start=1):
-            ext = Path(url).suffix
+            ext = splitext(urlparse(url).path)[1]
             full_path = join(path, f"{created_at}_twt_{post_id}_{ii:02}{ext}")
             self.__download_url(url, full_path)
 
